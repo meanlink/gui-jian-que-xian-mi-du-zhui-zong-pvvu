@@ -33,6 +33,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-rail-density-development-only}
       SEED_DEMO: ${SEED_DEMO:-true}
       ARTIFACT_DIR: /artifacts
+      WITNESS_URL: http://witness:9100
+      WITNESS_SECRET: ${WITNESS_SECRET:-rail-density-witness-local-demo-secret}
+      WITNESS_NODE: rail-density-ledger
     ports: ["${BACKEND_PORT:-19210}:8000"]
     volumes: ["analysis-artifacts:/artifacts"]
     depends_on:
@@ -59,6 +62,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+  witness:
+    build: ./witness
+    container_name: ${COMPOSE_PROJECT_NAME:-rail-density}-witness
+    environment:
+      WITNESS_SECRET: ${WITNESS_SECRET:-rail-density-witness-local-demo-secret}
+    volumes: ["witness-data:/data"]
+    ports: ["${WITNESS_PORT:-19310}:9100"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health')"]
+      interval: 4s
+      timeout: 3s
+      retries: 25
+    restart: unless-stopped
   frontend:
     build: ./frontend
     container_name: ${COMPOSE_PROJECT_NAME:-rail-density}-frontend
@@ -74,3 +90,4 @@ volumes:
   db-data:
   redis-data:
   analysis-artifacts:
+  witness-data:

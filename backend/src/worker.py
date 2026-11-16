@@ -8,12 +8,14 @@ from src.models import Job, Dataset, Report
 from src.services.business import analyze
 from src.services.reports import deliver
 from src.services.audit import record
+from src.services.ledger import ensure_initialized
+from src.services.relayer import relay_once
 logging.basicConfig(level=logging.INFO)
 def execute(job_id):
     with Session() as db:
         j=db.get(Job,job_id)
         if not j or j.status!='queued':return
-        j.status='running'; db.commit()
+        j.status='running'; record(db,'worker','job.running',{'id':j.id}); db.commit()
         try:
             d=db.get(Dataset,j.dataset_id)
             result=analyze(d.records,j.params)
@@ -34,10 +36,17 @@ def tick():
             d=deliver(db,r)
             if d:record(db,'worker','report.delivered',{'id':r.id,'delivery':d.id})
         db.commit()
+    # 见证端断线只返回 unavailable，绝不影响分析与分发
+    try:
+        with Session() as db:
+            relay_once(db)
+    except Exception:
+        logging.exception('Witness relay round failed; will retry next tick')
 def main():
     r=Redis.from_url(REDIS_URL,socket_timeout=3)
     # This Compose stack has a single worker. A crash must not strand its jobs.
     with Session() as db:
+        ensure_initialized(db)
         for j in db.scalars(select(Job).where(Job.status=='running')):
             j.status='queued';record(db,'worker','job.recovered',{'id':j.id})
         db.commit()
